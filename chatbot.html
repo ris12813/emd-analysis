@@ -1,0 +1,193 @@
+<script>
+(function () {
+
+  const TARGET = window.parent;
+  if (TARGET.document.getElementById("inditab-sales-bot")) return;
+
+  /* ───────── STYLES ───────── */
+  const style = TARGET.document.createElement("style");
+  style.innerHTML = `
+    #inditab-sales-bot {
+      position: fixed; right: 20px; bottom: 20px;
+      width: 340px; background: #fff;
+      border-radius: 16px;
+      box-shadow: 0 25px 60px rgba(0,0,0,0.35);
+      font-family: 'Segoe UI', sans-serif;
+      z-index: 999999; overflow: hidden;
+      display: flex; flex-direction: column;
+    }
+    #bot-header {
+      background: linear-gradient(135deg,#2979ff,#00b4d8);
+      color: white; padding: 12px 14px;
+      display: flex; justify-content: space-between; align-items: center;
+    }
+    .bot-title { font-weight: 700; font-size: 14px; display: flex; gap: 6px; align-items: center; }
+    .bot-actions button { background: transparent; border: none; color: white; font-size: 16px; cursor: pointer; margin-left: 6px; }
+    #bot-body { height: 240px; padding: 12px; overflow-y: auto; background: #f8fafc; display: flex; flex-direction: column; }
+    .bot-msg { max-width: 85%; padding: 8px 10px; margin-bottom: 8px; border-radius: 12px; font-size: 13px; line-height: 1.5; word-break: break-word; }
+    .bot-msg.bot { background: #e8f0ff; color: #1e3a8a; align-self: flex-start; }
+    .bot-msg.user { background: #2979ff; color: white; align-self: flex-end; }
+    #bot-suggestions { padding: 8px 10px; border-top: 1px solid #e5e7eb; display: flex; gap: 6px; flex-wrap: wrap; background: #fff; }
+    .chip { background: #eef2ff; color: #1e40af; padding: 5px 10px; border-radius: 999px; font-size: 11px; cursor: pointer; border: 1px solid #c7d2fe; }
+    .chip:hover { background: #dde8ff; }
+    #bot-input { display: flex; border-top: 1px solid #e5e7eb; }
+    #bot-input input { flex: 1; border: none; padding: 10px; font-size: 13px; outline: none; color: #111; }
+    #bot-input button { background: #2979ff; color: white; border: none; padding: 0 16px; font-weight: 600; cursor: pointer; }
+    #inditab-sales-bot.minimized #bot-body,
+    #inditab-sales-bot.minimized #bot-input,
+    #inditab-sales-bot.minimized #bot-suggestions { display: none !important; }
+  `;
+  TARGET.document.head.appendChild(style);
+
+  /* ───────── BOT HTML ───────── */
+  const bot = TARGET.document.createElement("div");
+  bot.id = "inditab-sales-bot";
+  bot.innerHTML = `
+    <div id="bot-header">
+      <div class="bot-title">🤖 <span>Inditab SubsIQ Assistant Bot</span></div>
+      <div class="bot-actions">
+        <button id="bot-min">—</button>
+        <button id="bot-close">✕</button>
+      </div>
+    </div>
+    <div id="bot-body">
+      <div class="bot-msg bot">👋 Hi! I'm <b>SubsIQ Assistant</b>.<br>Ask me about your subscription data!</div>
+    </div>
+    <div id="bot-suggestions">
+      <span class="chip">📊 Total sales</span>
+      <span class="chip">💰 Revenue</span>
+      <span class="chip">❌ Cancellations</span>
+      <span class="chip">🔁 SI growth</span>
+      <span class="chip">🎟️ Coupons</span>
+    </div>
+    <div id="bot-input">
+      <input id="botText" placeholder="Ask about sales, revenue..." autocomplete="off"/>
+      <button id="botSend">Send</button>
+    </div>
+  `;
+  TARGET.document.body.appendChild(bot);
+
+  /* ───────── DATA STORE ───────── */
+  let SUBS_DATA = {};
+
+  // postMessage se data receive karo (Streamlit iframe se)
+  window.addEventListener("message", function(e) {
+    if (e.data && e.data.type === "SUBSIQ_DATA") {
+      SUBS_DATA = e.data.payload || {};
+    }
+  });
+  TARGET.addEventListener("message", function(e) {
+    if (e.data && e.data.type === "SUBSIQ_DATA") {
+      SUBS_DATA = e.data.payload || {};
+    }
+  });
+
+  /* ───────── ANSWER ENGINE ───────── */
+  function getAnswer(text) {
+    const q = text.toLowerCase();
+    const ms = SUBS_DATA.monthly_sales || {};
+    const mr = SUBS_DATA.monthly_revenue || {};
+    const ps = SUBS_DATA.plan_stats || {};
+    const pm = SUBS_DATA.pm_cancel || {};
+    const tc = SUBS_DATA.top_coupons || {};
+    const si = SUBS_DATA.si_growth || {};
+
+    if (Object.keys(SUBS_DATA).length === 0)
+      return "⚠️The AI Agent is still being developed and is not available at the moment.";
+
+    if (q.includes('total sales') || q.includes('monthly sales') || q.includes('sales by month') || q.includes('📊') || (q.includes('total') && q.includes('sale'))) {
+      const rows = Object.entries(ms).map(([m,v]) => `• ${m}: <b>${Number(v).toLocaleString()}</b>`).join('<br>');
+      return `📊 <b>Monthly Sales:</b><br>${rows || 'No data'}`;
+    }
+
+    if (q.includes('total revenue')) {
+      return `💰 <b>Total Revenue:</b> ₹${Number(SUBS_DATA.total_revenue||0).toLocaleString()}`;
+    }
+
+    if (q.includes('revenue') || q.includes('💰')) {
+      const rows = Object.entries(mr).map(([m,v]) => `• ${m}: <b>₹${Number(v).toLocaleString()}</b>`).join('<br>');
+      return `💰 <b>Revenue by Month:</b><br>${rows || 'No data'}`;
+    }
+
+    if (q.includes('platinum')) {
+      const v = ps['VIP PLATINUM'] || {};
+      return `💎 <b>VIP Platinum:</b><br>• Total: <b>${Number(v.total||0).toLocaleString()}</b><br>• Active: <b>${Number(v.active||0).toLocaleString()}</b><br>• Cancelled: <b>${Number(v.cancelled||0).toLocaleString()}</b>`;
+    }
+
+    if (q.includes('starter')) {
+      const v = ps['VIP STARTER'] || {};
+      return `🚀 <b>VIP Starter:</b><br>• Total: <b>${Number(v.total||0).toLocaleString()}</b><br>• Active: <b>${Number(v.active||0).toLocaleString()}</b><br>• Cancelled: <b>${Number(v.cancelled||0).toLocaleString()}</b>`;
+    }
+
+    if (q.includes('active') && q.includes('plan')) {
+      const rows = Object.entries(ps).map(([p,v]) => `• ${p}: Active <b>${Number(v.active).toLocaleString()}</b> / Total <b>${Number(v.total).toLocaleString()}</b>`).join('<br>');
+      return `👥 <b>Active by Plan:</b><br>${rows || 'No data'}`;
+    }
+
+    if (q.includes('cancel') && q.includes('payment')) {
+      const rows = Object.entries(pm).map(([p,v]) => `• ${p.toUpperCase()}: <b>${v['Cancel%']}%</b>`).join('<br>');
+      return `💳 <b>Cancel Rate by Payment:</b><br>${rows || 'No data'}`;
+    }
+
+    if (q.includes('cancel') || q.includes('❌') || q.includes('cancellation')) {
+      return `❌ <b>Cancellations:</b><br>• Total Cancelled: <b>${Number(SUBS_DATA.total_cancelled||0).toLocaleString()}</b><br>• Total Active: <b>${Number(SUBS_DATA.total_active||0).toLocaleString()}</b>`;
+    }
+
+    if (q.includes('si') || q.includes('🔁') || q.includes('renewal')) {
+      const rows = Object.entries(si).map(([m,v]) => `• ${m}: <b>${Number(v).toLocaleString()}</b>`).join('<br>');
+      return `🔁 <b>SI Renewals Growth:</b><br>${rows || 'No data'}`;
+    }
+
+    if (q.includes('coupon') || q.includes('🎟')) {
+      const rows = Object.entries(tc).map(([c,v]) => `• ${c}: <b>${v}</b> uses`).join('<br>');
+      return `🎟️ <b>Top Coupons:</b><br>${rows || 'No data'}`;
+    }
+
+    if (q.includes('active')) {
+      return `✅ Total Active: <b>${Number(SUBS_DATA.total_active||0).toLocaleString()}</b>`;
+    }
+
+    return "🤔 Try: <b>total sales</b>, <b>revenue</b>, <b>cancellations</b>, <b>SI growth</b>, <b>platinum</b>, <b>starter</b>, <b>coupons</b>";
+  }
+
+  /* ───────── UI ───────── */
+  const bodyEl = bot.querySelector("#bot-body");
+  const inputEl = bot.querySelector("#botText");
+
+  function addMsg(text, cls) {
+    const d = TARGET.document.createElement("div");
+    d.className = `bot-msg ${cls}`;
+    d.innerHTML = text;
+    bodyEl.appendChild(d);
+    bodyEl.scrollTop = bodyEl.scrollHeight;
+  }
+
+  function sendMsg(text) {
+    if (!text.trim()) return;
+    addMsg(text, "user");
+    setTimeout(() => addMsg(getAnswer(text), "bot"), 350);
+  }
+
+  bot.querySelector("#botSend").onclick = () => {
+    const t = inputEl.value.trim();
+    inputEl.value = "";
+    sendMsg(t);
+  };
+  inputEl.addEventListener("keydown", e => {
+    if (e.key === "Enter") bot.querySelector("#botSend").click();
+  });
+  bot.querySelectorAll(".chip").forEach(c => {
+    c.onclick = () => sendMsg(c.innerText);
+  });
+  bot.querySelector("#bot-min").onclick = (e) => {
+    e.stopPropagation();
+    bot.classList.toggle("minimized");
+  };
+  bot.querySelector("#bot-close").onclick = (e) => {
+    e.stopPropagation();
+    bot.remove();
+    style.remove();
+  };
+
+})();
+</script>
